@@ -9,8 +9,8 @@ from datetime import datetime
 load_dotenv()
 
 # Jira credentials
-JIRA_DOMAIN = 'probustech.atlassian.net'
-JIRA_EMAIL = 'suyash.kamath@probusinsurance.com'
+JIRA_DOMAIN = os.getenv('JIRA_DOMAIN')
+JIRA_EMAIL = os.getenv('JIRA_EMAIL')
 JIRA_API_TOKEN = os.getenv('JIRA_API_TOKEN')
 
 # Encode email:token
@@ -22,6 +22,10 @@ HEADERS = {
     'Authorization': f'Basic {AUTH}',
     'Accept': 'application/json'
 }
+
+# Output folder for CSVs
+CSV_OUTPUT_FOLDER = 'jira_reports'
+os.makedirs(CSV_OUTPUT_FOLDER, exist_ok=True)
 
 # Get all projects
 def get_projects():
@@ -57,7 +61,7 @@ def get_project_issues(project_key, project_name):
     while True:
         params = {
             'jql': f'project={project_key}',
-            'fields': 'assignee,summary,status,created,duedate,resolutiondate,statuscategorychangedate,issuetype,priority,updated,labels',
+            'fields': 'assignee,summary,status,created,duedate,resolutiondate,statuscategorychangedate,issuetype,priority,updated,labels,parent',
             'startAt': start_at,
             'maxResults': max_results
         }
@@ -79,6 +83,9 @@ def get_project_issues(project_key, project_name):
         if not assignee:
             continue
 
+        parent_field = fields.get('parent')
+        parent_summary = parent_field['fields']['summary'] if parent_field and 'fields' in parent_field else None
+
         task = {
             'assignee_name': assignee.get('displayName'),
             'project_name': project_name,
@@ -93,7 +100,8 @@ def get_project_issues(project_key, project_name):
             'resolved_date': fields.get('resolutiondate'),
             'is_closed': fields.get('status', {}).get('name') == 'Done',
             'last_updated': fields.get('updated'),
-            'labels': ', '.join(fields.get('labels', []))
+            'labels': ', '.join(fields.get('labels', [])),
+            'parent_summary': parent_summary
         }
 
         compute_metrics(task)
@@ -103,7 +111,7 @@ def get_project_issues(project_key, project_name):
 
 # Export all issues to CSV
 def export_issues_to_csv(tasks, project_name):
-    filename = f"{project_name.replace(' ', '_')}_Performance_Report.csv"
+    filename = os.path.join(CSV_OUTPUT_FOLDER, f"{project_name.replace(' ', '_')}_Performance_Report.csv")
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=list(tasks[0].keys()))
         writer.writeheader()
